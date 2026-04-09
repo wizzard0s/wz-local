@@ -9,5 +9,6 @@
       "status": "active"
     }
   ],
-  "status": "active"
+  "status": "active",
+  "repository": "https://github.com/wizzard0s/wz-local"
 }
