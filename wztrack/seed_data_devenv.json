@@ -1,0 +1,140 @@
+{
+  "project": {
+    "key": "DEVENV",
+    "name": "WZTrack Dev Environment",
+    "description": "Infrastructure, containerisation, and tooling setup required to run WZTrack locally and prepare it for production deployment."
+  },
+  "states": [
+    {"name": "Backlog",     "category": "unstarted", "position": 0, "color": "#6b7280"},
+    {"name": "To Do",       "category": "unstarted", "position": 1, "color": "#3b82f6"},
+    {"name": "In Progress", "category": "started",   "position": 2, "color": "#f59e0b"},
+    {"name": "In Review",   "category": "started",   "position": 3, "color": "#8b5cf6"},
+    {"name": "Done",        "category": "done",      "position": 4, "color": "#10b981"},
+    {"name": "Cancelled",   "category": "cancelled", "position": 5, "color": "#ef4444"}
+  ],
+  "requirements": [
+    {
+      "title": "Containerised development environment via Docker Compose",
+      "description": "All WZTrack services (API, frontend, database) must run as Docker containers orchestrated by a single docker-compose.yml. A developer must be able to start the full stack with one command.",
+      "acceptance_criteria": "- `docker compose up --build` starts all three services without manual intervention.\n- No service depends on host-installed Python, Node, or PostgreSQL.\n- Environment variables are loaded from a `.env` file at the project root.\n- Containers restart unless explicitly stopped.",
+      "priority": "must",
+      "_status": "approved"
+    },
+    {
+      "title": "PostgreSQL database with persistent volume and health check",
+      "description": "The database container must persist data across container restarts using a named Docker volume. The API container must not start until the database passes its health check.",
+      "acceptance_criteria": "- Named volume `wztrack_pgdata` survives `docker compose down` and retains data.\n- `docker compose down -v` explicitly wipes the volume for a clean slate.\n- API container declares `depends_on: db: condition: service_healthy`.\n- Health check uses `pg_isready` with a 5 s interval and 10 retries.",
+      "priority": "must",
+      "_status": "approved"
+    },
+    {
+      "title": "API service configuration and secrets management via .env",
+      "description": "All sensitive configuration (DB credentials, JWT keys, admin seed email) must be supplied through environment variables loaded from a `.env` file. No secrets may be committed to source control.",
+      "acceptance_criteria": "- `.env` is listed in `.gitignore`.\n- An `.env.example` with placeholder values is committed.\n- `pydantic-settings` loads all config via the `Settings` class in `config.py`.\n- RS256 PEM keys are stored as single-line strings with `\\n` as the line separator.",
+      "priority": "must",
+      "_status": "approved"
+    },
+    {
+      "title": "RS256 JWT key generation and correct PEM encoding in .env",
+      "description": "The API uses RS256 asymmetric JWT signing. Private and public keys must be generated once, stored in `.env` with newlines encoded as `\\n`, and correctly decoded at runtime by the FastAPI config layer.",
+      "acceptance_criteria": "- Keys generated with `openssl genrsa` and `openssl rsa -pubout`.\n- `.env` stores each PEM key as a single-line string with literal `\\n` between lines.\n- `config.py` `jwt_private_key_pem` property replaces `\\\\n` with `\\n` before use.\n- Login endpoint returns `token_type: bearer` with no JWT decode errors.",
+      "priority": "must",
+      "_status": "approved"
+    },
+    {
+      "title": "Python dependency pinning for runtime compatibility",
+      "description": "The API Docker image must pin all Python dependencies to exact versions that are known to work together. Transitive incompatibilities must be resolved before they reach the image build.",
+      "acceptance_criteria": "- `requirements.txt` pins `bcrypt==3.2.2` to prevent passlib incompatibility with bcrypt 4.x.\n- `pydantic[email]` is used (not plain `pydantic`) so `EmailStr` fields validate correctly.\n- `fastapi==0.111.1` is pinned to avoid route assertion regressions.\n- `docker compose up --build` completes with exit code 0.",
+      "priority": "must",
+      "_status": "approved"
+    },
+    {
+      "title": "FastAPI route annotation compliance for 204 responses",
+      "description": "FastAPI 0.111+ asserts that HTTP 204 routes do not declare a response body type. All route functions that return 204 must not carry a `-> None` return annotation.",
+      "acceptance_criteria": "- No route decorated with `status_code=204` has a `-> None` return type annotation.\n- API container starts without `AssertionError` from FastAPI internals.\n- Affected routers: auth, issues, projects, testcases, users, wiki.",
+      "priority": "must",
+      "_status": "approved"
+    },
+    {
+      "title": "Nginx reverse proxy with correct host header and port forwarding",
+      "description": "The nginx container proxies `/api/` requests to the API container. When running on a non-standard port (e.g. 8080), nginx must forward the full `Host` header including the port so that FastAPI redirect responses produce correct `Location` URLs.",
+      "acceptance_criteria": "- `proxy_set_header Host $http_host` is used (not `$host`).\n- Trailing-slash redirects from FastAPI resolve to the correct port (not port 80).\n- No CORS `Access-Control-Allow-Origin` errors appear in the browser console.\n- `GET http://localhost:8080/api/v1/projects/` returns HTTP 200.",
+      "priority": "must",
+      "_status": "approved"
+    },
+    {
+      "title": "Port allocation strategy for Windows with Rancher Desktop",
+      "description": "On Windows with Rancher Desktop, port 80 is owned by the `host-switch` process and cannot be bound by Docker containers. The frontend must be exposed on a different port.",
+      "acceptance_criteria": "- Frontend nginx container is mapped to `8080:80` in docker-compose.yml.\n- `CORS_ORIGINS` env var includes `http://localhost:8080`.\n- No port conflict errors on `docker compose up`.\n- Developer documentation notes that Docker Desktop and Rancher Desktop use different named pipes.",
+      "priority": "must",
+      "_status": "approved"
+    },
+    {
+      "title": "Admin seed user with valid email domain",
+      "description": "The API seeds an admin user on first startup using credentials from environment variables. The admin email must use a domain accepted by `email-validator` (pydantic's EmailStr).",
+      "acceptance_criteria": "- Admin email uses a non-reserved TLD (`.io`, `.com`, `.dev` — not `.local`).\n- Seeding is idempotent: running twice does not create duplicate users.\n- Default admin credentials documented in `.env.example` and the wiki.",
+      "priority": "must",
+      "_status": "approved"
+    },
+    {
+      "title": "Database migration strategy before production deployment",
+      "description": "The current `create_all` call on startup is acceptable for development but must be replaced with Alembic migrations before any production deployment to allow schema evolution without data loss.",
+      "acceptance_criteria": "- Alembic is initialised with `alembic init`.\n- At least one baseline migration captures the current schema.\n- `alembic upgrade head` runs cleanly against a fresh database.\n- `docker compose up` runs migrations before starting the API.",
+      "priority": "must",
+      "_status": "draft"
+    },
+    {
+      "title": "Docker context configuration for Rancher Desktop on Windows",
+      "description": "Rancher Desktop uses the `default` Docker context (npipe `docker_engine`), not the `desktop-linux` context created by Docker Desktop. The correct context must be active for all Docker and Compose commands to work.",
+      "acceptance_criteria": "- `docker context use default` documented in setup guide.\n- `docker context ls` shows `default` as active.\n- Any stale `desktop-linux` context has been removed.\n- CI pipeline explicitly sets the Docker context before running Compose commands.",
+      "priority": "should",
+      "_status": "approved"
+    },
+    {
+      "title": "JWT token invalidation via blocklist on logout",
+      "description": "The current logout endpoint is stateless and does not invalidate the token. A token blocklist must be implemented so that a logged-out token is rejected before its natural expiry.",
+      "acceptance_criteria": "- Redis (or DB-backed) blocklist stores revoked JTI values until token expiry.\n- Logout adds the token JTI to the blocklist.\n- Middleware rejects requests carrying a blocklisted token with HTTP 401.\n- Blocklist entries expire automatically when the token would have expired.",
+      "priority": "should",
+      "_status": "draft"
+    }
+  ],
+  "wiki": [
+    {
+      "title": "Environment setup guide",
+      "content": "# Environment setup guide\n\n## Before you begin\n\n- Windows 10/11 with Rancher Desktop installed and running\n- Docker context set to `default`: run `docker context use default`\n- Git configured with your credentials\n- Ports 8080 and 8000 available\n\n## Steps\n\n1. Clone the repository.\n2. Copy `.env.example` to `.env`.\n3. Generate RS256 keys (see **Key generation** below) and paste into `.env`.\n4. Set `ADMIN_EMAIL` to a valid address (not `.local` TLD).\n5. Run `docker compose up --build` from the `wztrack/` directory.\n6. Access the app at `http://localhost:8080`.\n7. Log in with the admin credentials from your `.env`.\n\n## Key generation\n\n```bash\nopenssl genrsa -out private.pem 2048\nopenssl rsa -in private.pem -pubout -out public.pem\n```\n\nPaste each file into `.env` as a single line, replacing every newline with `\\n`:\n\n```\nJWT_PRIVATE_KEY=-----BEGIN RSA PRIVATE KEY-----\\nMIIEo...\\n-----END RSA PRIVATE KEY-----\nJWT_PUBLIC_KEY=-----BEGIN PUBLIC KEY-----\\nMIIBIj...\\n-----END PUBLIC KEY-----\n```\n\n## Port reference\n\n| Service | Host port | Notes |\n|---|---|---|\n| Frontend (nginx) | 8080 | Port 80 reserved by Rancher Desktop on Windows |\n| API (uvicorn) | 8000 | Direct access for testing |\n| PostgreSQL | not exposed | Internal only |\n\n## Troubleshooting\n\n| Symptom | Fix |\n|---|---|\n| `Cannot connect to Docker daemon` | Run `docker context use default` |\n| Port 80 bind error | Use `8080:80` in docker-compose.yml |\n| `InvalidByte` on login | Check JWT key `\\\\n` replacement in `config.py` |\n| `400 Bad Request` on login | Ensure admin email does not use `.local` TLD |\n| `AssertionError` on startup | Remove `-> None` from all HTTP 204 route functions |"
+    },
+    {
+      "title": "Known issues and fixes log",
+      "content": "# Known issues and fixes log\n\nThis page records every environment bug found during initial setup, the root cause, and the fix applied.\n\n---\n\n## FIX-001: Docker context pointing to Docker Desktop pipe\n\n**Symptom:** `docker ps` fails with `Cannot connect to the Docker daemon`.\n\n**Root cause:** A stale `desktop-linux` context pointed to `npipe:////./pipe/dockerDesktopLinuxEngine` (Docker Desktop, not installed).\n\n**Fix:** `docker context use default` then `docker context rm desktop-linux`.\n\n---\n\n## FIX-002: email-validator rejects .local TLD\n\n**Symptom:** Login returns HTTP 401 \"Invalid credentials\" even with correct password.\n\n**Root cause:** `pydantic[email]` uses `email-validator` which rejects `.local` as a reserved/special-use TLD. Admin seed user never created.\n\n**Fix:** Changed `ADMIN_EMAIL` from `admin@wztrack.local` to `admin@wztrack.io` in `.env` and `docker-compose.yml`. Reset volume with `docker compose down -v`.\n\n---\n\n## FIX-003: FastAPI assertion error on 204 routes\n\n**Symptom:** API container fails to start with `AssertionError` from FastAPI internals.\n\n**Root cause:** FastAPI 0.111+ asserts no response body on 204 routes. Functions annotated `-> None` are interpreted as having a `NoneType` response model.\n\n**Fix:** Removed `-> None` from all six affected route functions: `auth.py`, `issues.py`, `projects.py`, `testcases.py`, `users.py`, `wiki.py`.\n\n---\n\n## FIX-004: bcrypt 4.x incompatible with passlib 1.7.4\n\n**Symptom:** `AttributeError` or password verification failure at login.\n\n**Root cause:** `bcrypt` 4.x rejects passwords longer than 72 bytes (passlib's wrap-bug detection uses a 73-byte test). passlib 1.7.4 was not updated to handle this.\n\n**Fix:** Pinned `bcrypt==3.2.2` in `requirements.txt`.\n\n---\n\n## FIX-005: JWT PEM key double-escape in .env\n\n**Symptom:** `InvalidByte` or `InvalidKeyError` when verifying JWT tokens after login.\n\n**Root cause:** `.env` stores PEM newlines as `\\n` (backslash + n). `pydantic-settings` reads this as a literal two-character sequence `\\n`. The `config.py` property was replacing single `\\n` which matched nothing.\n\n**Fix:** Changed `jwt_private_key_pem` and `jwt_public_key_pem` properties to `replace(\"\\\\\\\\n\", \"\\n\")`.\n\n---\n\n## FIX-006: Rancher Desktop owns port 80 on Windows\n\n**Symptom:** `docker compose up` fails with `bind: address already in use` on port 80.\n\n**Root cause:** Rancher Desktop's `host-switch.exe` process binds port 80 on Windows host.\n\n**Fix:** Changed frontend port mapping from `80:80` to `8080:80`. Updated `CORS_ORIGINS` to include `http://localhost:8080`.\n\n---\n\n## FIX-007: nginx strips port from Host header causing CORS redirect failure\n\n**Symptom:** Browser console: `Access to XMLHttpRequest blocked by CORS policy` after redirect from `/api/v1/projects` to `http://localhost/api/v1/projects/`.\n\n**Root cause:** FastAPI issues a trailing-slash redirect. nginx was forwarding `Host: localhost` (no port) via `$host`. FastAPI built the redirect URL using the portless host, sending the browser to port 80.\n\n**Fix:** Changed `proxy_set_header Host $host` to `proxy_set_header Host $http_host` in `nginx.conf`. `$http_host` preserves the port from the original request."
+    },
+    {
+      "title": "Docker Compose service reference",
+      "content": "# Docker Compose service reference\n\n## Services\n\n### db (wztrack-db)\n\n| Property | Value |\n|---|---|\n| Image | `postgres:16-alpine` |\n| Port | not exposed to host |\n| Volume | `wztrack_pgdata` |\n| Health check | `pg_isready` — 5 s interval, 10 retries |\n\n### api (wztrack-api)\n\n| Property | Value |\n|---|---|\n| Image | built from `backend/Dockerfile` |\n| Port | `8000:8000` |\n| Depends on | `db` (healthy) |\n| Runtime | Python 3.12-slim + uvicorn |\n| Key config | `DATABASE_URL`, `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`, `ADMIN_EMAIL` |\n\n### frontend (wztrack-fe)\n\n| Property | Value |\n|---|---|\n| Image | built from `frontend/Dockerfile` (Node 20 build + nginx 1.27 runtime) |\n| Port | `8080:80` |\n| Proxy rule | `/api/` → `http://api:8000` |\n| Key config | `proxy_set_header Host $http_host` in `nginx.conf` |\n\n## Volumes\n\n| Name | Purpose |\n|---|---|\n| `wztrack_pgdata` | PostgreSQL data directory |\n| `wztrack_uploads` | Issue file attachments |\n\n## Common commands\n\n```bash\n# Start all services\ndocker compose up -d\n\n# Rebuild and restart a single service\ndocker compose up -d --build frontend\n\n# Wipe database and reseed\ndocker compose down -v && docker compose up -d\n\n# Tail API logs\ndocker compose logs -f api\n\n# Open a psql shell\ndocker exec -it wztrack-db psql -U wztrack -d wztrack\n```"
+    }
+  ],
+  "issues": [
+    {"title": "[EPIC] Container orchestration and Docker setup",         "type": "epic",  "priority": "urgent", "state": "Done",        "story_points": 0, "description": "Get all three services running via Docker Compose on Windows with Rancher Desktop."},
+    {"title": "[EPIC] API service hardening",                           "type": "epic",  "priority": "high",   "state": "Done",        "story_points": 0, "description": "Fix all startup errors, dependency pins, and config layer issues preventing the API from starting."},
+    {"title": "[EPIC] Authentication and JWT configuration",            "type": "epic",  "priority": "urgent", "state": "Done",        "story_points": 0, "description": "Get login working end-to-end: RS256 keys, PEM decoding, email validation, password hashing."},
+    {"title": "[EPIC] Networking and proxy configuration",              "type": "epic",  "priority": "high",   "state": "Done",        "story_points": 0, "description": "Fix nginx proxy, CORS origins, and port mapping for Rancher Desktop on Windows."},
+    {"title": "[EPIC] Production readiness",                            "type": "epic",  "priority": "medium", "state": "Backlog",     "story_points": 0, "description": "Alembic migrations, token blocklist, CI pipeline, and secret rotation procedure."},
+    {"title": "Fix Docker context - switch from desktop-linux to default",       "type": "task",  "priority": "urgent", "state": "Done",    "story_points": 1, "description": "Stale desktop-linux context pointed to Docker Desktop pipe. Run `docker context use default` and `docker context rm desktop-linux`."},
+    {"title": "Add pydantic[email] to requirements.txt",                         "type": "task",  "priority": "urgent", "state": "Done",    "story_points": 1, "description": "EmailStr fields require the email-validator extra. Changed `pydantic==2.10.3` to `pydantic[email]==2.10.3`."},
+    {"title": "Remove -> None return annotations from HTTP 204 routes",          "type": "task",  "priority": "urgent", "state": "Done",    "story_points": 2, "description": "FastAPI 0.111+ treats -> None on 204 routes as a NoneType response model. Removed from 6 files: auth, issues, projects, testcases, users, wiki."},
+    {"title": "Pin bcrypt==3.2.2 to fix passlib 1.7.4 incompatibility",         "type": "task",  "priority": "urgent", "state": "Done",    "story_points": 1, "description": "bcrypt 4.x rejects 73-byte passlib wrap-bug test password. Pinned bcrypt==3.2.2 in requirements.txt."},
+    {"title": "Fix JWT PEM key double-escape in .env and config.py",             "type": "task",  "priority": "urgent", "state": "Done",    "story_points": 2, "description": "pydantic-settings reads \\n from .env as literal backslash+n. Fixed config.py to replace \\\\n (double backslash) pattern in jwt_private_key_pem and jwt_public_key_pem properties."},
+    {"title": "Change admin seed email from .local to .io TLD",                  "type": "task",  "priority": "urgent", "state": "Done",    "story_points": 1, "description": "email-validator rejects .local as a reserved TLD. Changed ADMIN_EMAIL to admin@wztrack.io in .env and docker-compose.yml. Reset volume to reseed."},
+    {"title": "Remap frontend port from 80 to 8080 for Rancher Desktop",         "type": "task",  "priority": "high",   "state": "Done",    "story_points": 1, "description": "Rancher Desktop host-switch.exe owns port 80 on Windows. Changed docker-compose.yml port mapping to 8080:80. Updated CORS_ORIGINS."},
+    {"title": "Fix nginx Host header to preserve port ($http_host)",             "type": "task",  "priority": "high",   "state": "Done",    "story_points": 1, "description": "nginx was using $host which strips the port. FastAPI trailing-slash redirects went to port 80, blocked by CORS. Changed to $http_host in nginx.conf."},
+    {"title": "Create .env.example with all required variables",                 "type": "story", "priority": "high",   "state": "To Do",   "story_points": 2, "description": "Commit a .env.example with placeholder values for all required environment variables. Include instructions for generating RS256 keys."},
+    {"title": "Write developer onboarding runbook (wiki)",                       "type": "story", "priority": "high",   "state": "Done",    "story_points": 2, "description": "Document full setup steps, port reference, key generation, and troubleshooting table in the project wiki."},
+    {"title": "Document all known issues and fixes in wiki",                     "type": "story", "priority": "medium", "state": "Done",    "story_points": 2, "description": "Create Known Issues and Fixes Log wiki page recording all 7 bugs found during initial setup with root cause and fix for each."},
+    {"title": "Initialise Alembic and create baseline migration",                "type": "story", "priority": "high",   "state": "To Do",   "story_points": 3, "description": "Replace create_all on startup with Alembic. Run `alembic init`, create baseline migration from current models, verify `alembic upgrade head` from empty DB."},
+    {"title": "Run Alembic migrations in API container entrypoint",              "type": "task",  "priority": "high",   "state": "To Do",   "story_points": 1, "description": "Add `alembic upgrade head` to the API container startup command before uvicorn. Ensures schema is always current on container start."},
+    {"title": "Add Redis service to docker-compose for token blocklist",         "type": "story", "priority": "medium", "state": "Backlog", "story_points": 2, "description": "Add a Redis container to docker-compose.yml. API depends_on redis. Used for logout token blocklist."},
+    {"title": "Implement JWT token blocklist using Redis",                        "type": "story", "priority": "medium", "state": "Backlog", "story_points": 5, "description": "On logout, add token JTI to Redis with TTL matching remaining token lifetime. Middleware checks blocklist on every authenticated request."},
+    {"title": "Add GitHub Actions CI workflow",                                   "type": "story", "priority": "medium", "state": "Backlog", "story_points": 3, "description": "Workflow triggers on push to main. Steps: lint (ruff), type check (mypy), run pytest, build Docker images. Fail fast on first error."},
+    {"title": "Write Pytest integration test suite for API",                      "type": "story", "priority": "medium", "state": "Backlog", "story_points": 5, "description": "Async test client covering: register, login, refresh, logout, project CRUD, issue CRUD, requirements CRUD, QA gate enforcement. Use pytest-asyncio + httpx.AsyncClient."},
+    {"title": "Document secret rotation procedure",                               "type": "task",  "priority": "low",    "state": "Backlog", "story_points": 2, "description": "Write runbook for rotating JWT RS256 keys in production: generate new pair, update .env / secrets manager, rolling restart API containers, verify existing sessions."}
+  ]
+}

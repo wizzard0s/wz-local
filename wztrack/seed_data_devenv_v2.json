@@ -1,0 +1,163 @@
+{
+  "project_update": {
+    "key": "DEVENV",
+    "name": "WZ Dev Standards & Environment",
+    "description": "Defines and governs the development standards, coding conventions, CSS token system, template architecture, and cross-app coherence rules for all WZ applications. This is the single source of truth for how WZ apps are built, not how any one app is deployed."
+  },
+  "requirements": [
+    {
+      "title": "CSS design token system — no hardcoded colour values in any WZ app",
+      "description": "All WZ applications must source every colour, surface, and border value exclusively from CSS custom properties defined in `wizzard-tokens.css`. No hardcoded hex values, rgb(), or rgba() are permitted in any application CSS file.\n\nThe token file lives in `WIZZARDSDK/assets/` and is the single source of truth. If a new colour is needed that has no token, a new token must be proposed and added to that file before implementation.",
+      "acceptance_criteria": "- `validate.ps1` reports zero hardcoded colour violations for all WZ app CSS files.\n- `wizzard-tokens.css` is the only place where colour values are defined.\n- All tokens follow the `--wz-*` naming convention.\n- Any PR adding a hex/rgba value to an app CSS file is blocked at review.\n- Known gap: `wai.css` has ~27 legacy hex values — these must be resolved as a tracked issue.",
+      "priority": "must",
+      "_status": "draft"
+    },
+    {
+      "title": "Template architecture — all authenticated pages extend `_base.html`",
+      "description": "Every authenticated Jinja2 template across all WZ applications must extend `_base.html` from its application's template folder. Bootstrap CDN links, the sidebar, the toast container, and shared scripts belong in `_base.html` — they must not be duplicated in page templates.\n\nLogin and error pages are standalone exceptions.",
+      "acceptance_criteria": "- Every authenticated template file begins with `{% extends \"_base.html\" %}`.\n- No Bootstrap `<link>` or `<script>` tag appears in a page template body.\n- No inline `<style>` blocks appear in any page template.\n- `_base.html` declares `{% block scripts %}` used by page templates for page-specific JS.\n- Known gap: existing WizzardChat templates are standalone — backfill required.",
+      "priority": "must",
+      "_status": "draft"
+    },
+    {
+      "title": "Sidebar active-link state managed exclusively by `sidebar.js`",
+      "description": "Sidebar navigation links must never use Jinja2 conditionals to set an active class. The active state for the current page is set at runtime by `sidebar.js` using `window.location.pathname`. This keeps the server template rendering stateless and the active logic in one place.",
+      "acceptance_criteria": "- No `{% if ... %}active{% endif %}` pattern inside any `#sidebar` block in any template.\n- All sidebar `<a>` elements carry only `class=\"nav-link text-white\"`.\n- `sidebar.js` correctly identifies and marks the active link for all defined routes.\n- Pattern is consistent across WEBDASH, WIZZARDAI, WIZZARDAUTH, WIZZARDCHAT, WIZZARDFLOW, WIZZARDQA, WIZZARDWFM, WIZZARDTICKETS.",
+      "priority": "must",
+      "_status": "draft"
+    },
+    {
+      "title": "Toast notifications use Bootstrap Toast API via `#toastContainer`",
+      "description": "All WZ applications use an identical toast notification pattern: programmatically create a Bootstrap `.toast` div, append it to `#toastContainer`, initialise with `new bootstrap.Toast(el, { delay: 3500 })`, and remove on `hidden.bs.toast`. No manual positioning, no `setTimeout` removal, no `document.body.appendChild`.",
+      "acceptance_criteria": "- A `#toastContainer` element is present in every `_base.html`.\n- The `showToast(msg, ok)` function signature is consistent across all apps.\n- No app uses `document.body.appendChild` or inline `position-fixed` style on toasts.\n- `setTimeout` is never used to remove toasts — only the `hidden.bs.toast` event.\n- The pattern is unit-testable in isolation from the page.",
+      "priority": "must",
+      "_status": "draft"
+    },
+    {
+      "title": "JavaScript follows IIFE module pattern — no unscoped globals",
+      "description": "All application JavaScript in WZ apps uses the IIFE module pattern: `(function() { 'use strict'; ... })();`. The only names permitted on the `window` object are inline event handlers under the `window._wz_{app}_{action}` namespace. No free globals, no accidental namespace pollution.",
+      "acceptance_criteria": "- Every JS file that is not a shared library uses `(function() { 'use strict'; ... })();`.\n- Inline event-handler names follow `window._wz_{app_short}_{action}` (e.g. `window._wz_wc_saveContact`).\n- No variable or function is declared at top-level scope outside an IIFE.\n- API calls in all JS use relative URLs — never `http://localhost:{port}`.\n- Token storage keys follow the registered app token key (e.g. `wizzard_chat_token`).",
+      "priority": "must",
+      "_status": "draft"
+    },
+    {
+      "title": "CDN dependency versions pinned and consistent across all WZ apps",
+      "description": "All WZ applications use identical CDN versions for shared frontend libraries. Version pinning prevents silent breakage from CDN updates and ensures cross-app visual and behavioural consistency.",
+      "acceptance_criteria": "- Bootstrap CSS + JS: **5.3.3** with correct SRI hashes in all `_base.html` files.\n- Bootstrap Icons: **1.11.3** in all `_base.html` files.\n- No app uses a different Bootstrap or BI version.\n- SRI hashes are sourced from the official CDN — never invented.\n- `validate.ps1` flags any app using a non-standard version.",
+      "priority": "must",
+      "_status": "draft"
+    },
+    {
+      "title": "Sidebar layout uses fixed positioning with `margin-left` only",
+      "description": "The WZ sidebar layout pattern is: `#sidebar` at `position: fixed`, `width: 220px`, `height: 100vh`. The `.main-content` uses `margin-left: 220px` as its sole offset. `position: sticky` and flex wrapper patterns are prohibited.",
+      "acceptance_criteria": "- `#sidebar` uses `position: fixed; left: 0; top: 0; width: 220px; height: 100vh; z-index: 100` in every app.\n- `.main-content` uses `margin-left: 220px; padding: 24px; min-height: 100vh`.\n- No `position: sticky` on sidebar elements anywhere.\n- No `d-flex` wrapper enclosing sidebar + main content.\n- Dimensions live in the app CSS file — not as inline styles on the `<nav>` element.",
+      "priority": "must",
+      "_status": "draft"
+    },
+    {
+      "title": "Python: async FastAPI, type hints, pathlib, structured logging",
+      "description": "All Python code across WZ services follows a consistent style: async FastAPI with Uvicorn, full type annotations on all function signatures, `pathlib.Path` for file operations, and the `logging` module for structured log output. No print statements in production code.",
+      "acceptance_criteria": "- All route functions are `async def`.\n- Every function parameter and return type is annotated.\n- File paths constructed with `pathlib.Path`, not string concatenation.\n- Log output uses `logging.getLogger(__name__)` — no bare `print()`.\n- `ruff` linting passes with zero violations in all WZ Python codebases.",
+      "priority": "must",
+      "_status": "draft"
+    },
+    {
+      "title": "API conventions: pydantic schemas, JWT auth, standard error codes",
+      "description": "All WZ FastAPI services follow a shared API contract: request and response bodies use pydantic base models, authentication uses OAuth2 Bearer JWT, and error responses carry a stable machine-readable `code` field alongside the HTTP status code.",
+      "acceptance_criteria": "- Every request body and response body has a corresponding pydantic `BaseModel` schema.\n- Auth is `OAuth2PasswordBearer` with JWT validated on every protected route.\n- Error responses carry `{\"detail\": \"...\", \"code\": \"UPPER_SNAKE_CASE\"}` for programmatic handling.\n- No endpoint returns a raw `dict` — always a typed schema or `Response`.\n- OpenAPI docs (`/docs`) are generated correctly for all routes.",
+      "priority": "must",
+      "_status": "draft"
+    },
+    {
+      "title": "WIZZARDSDK is the single source of truth for all cross-app standards",
+      "description": "`WIZZARDSDK/standards/frontend.md` is the canonical reference for all frontend patterns. Any new UI pattern, layout technique, or JS convention must be proposed in that file before it may be implemented in any WZ app. Silent drift is not permitted.\n\n`validate.ps1` is the enforcement tool — run it to audit all apps for standard violations.",
+      "acceptance_criteria": "- `WIZZARDSDK/standards/frontend.md` is complete and up to date.\n- `validate.ps1` runs clean (zero violations) against all app codebases.\n- Every app's `.github/copilot-instructions.md` references the SDK standard.\n- Any pattern used in an app that is not in the standard is logged as a drift issue in DEVENV.\n- New pattern proposals are tracked as DEVENV stories before implementation.",
+      "priority": "must",
+      "_status": "draft"
+    },
+    {
+      "title": "Developer workstation setup — Python 3.12, Node 20, per-project .venv",
+      "description": "Each WZ developer workstation must use Python 3.12 and Node 20 LTS. Each project has its own `.venv` virtual environment. VS Code with GitHub Copilot Chat is the standard IDE. Windows PowerShell is the standard shell for WZ development.",
+      "acceptance_criteria": "- Python 3.12 is the minimum runtime version for all WZ Python services.\n- Node 20 LTS is used for all frontend builds.\n- Each project root contains a `.venv` directory (listed in `.gitignore`).\n- A `requirements.txt` per project documents all pinned dependencies.\n- VS Code `settings.json` and recommended extensions are documented.\n- Onboarding takes one command per project after prerequisites are installed.",
+      "priority": "should",
+      "_status": "draft"
+    },
+    {
+      "title": "Each WZ app registers its identity tokens in `copilot-instructions.md`",
+      "description": "Every WZ application's `.github/copilot-instructions.md` must declare its unique identity tokens:\n- App CSS file path\n- localStorage token key (`wz_{app}_token`)\n- Nav state key (`{prefix}_nav_{scope}_v{n}`)\n- JS handler namespace (`window._wz_{app}_*`)\n\nThis allows the SDK standard to enforce no cross-contamination between apps.",
+      "acceptance_criteria": "- All eight WZ apps have a `.github/copilot-instructions.md` with the four identity tokens declared.\n- No app uses another app's token key.\n- Token keys are unique across the entire WZ suite.\n- `validate.ps1` checks for duplicate token keys across apps.",
+      "priority": "should",
+      "_status": "draft"
+    }
+  ],
+  "wiki": [
+    {
+      "title": "WZ development standards — overview",
+      "content": "# WZ development standards — overview\n\n## Purpose\n\nThis project governs how WZ applications are built, not how they are deployed. Every WZ app shares a single design language, template architecture, JavaScript convention, and Python style. Consistency is enforced by the SDK and audited by `validate.ps1`.\n\n## The eight WZ applications\n\n| App | Port | CSS file | Token key |\n|---|---|---|---|\n| WEBDASH | 3099 | `webdash.css` | `wizzard_wd_token` |\n| WIZZARDAI | 8080 | `wai.css` | `wz_wai_token` |\n| WIZZARDAUTH | 8090 | `wizzardauth.css` | `wz_wa_token` |\n| WIZZARDCHAT | 8092 | `wizzardchat.css` | `wizzard_chat_token` |\n| WIZZARDFLOW | 8096 | `wizzardflow.css` | `wizzard_flow_token` |\n| WIZZARDQA | 8093 | `qa.css` | `wz_qa_token` |\n| WIZZARDWFM | 8094 | `wfm.css` | `wz_wfm_token` |\n| WIZZARDTICKETS | 8095 | `wizzardtickets.css` | `wizzard_tickets_token` |\n\n## Single source of truth\n\n`WIZZARDSDK/standards/frontend.md` — every UI pattern lives here.\n\n## Enforcement\n\nRun `WIZZARDSDK/validate.ps1` at any time to audit all eight apps for standard violations.\n\n## Adding a new pattern\n\n1. Identify the pattern and document it.\n2. Add it to `WIZZARDSDK/standards/frontend.md`.\n3. Update each app's `.github/copilot-instructions.md`.\n4. Create a DEVENV story for any backfill work required across existing apps.\n5. Close the story only when `validate.ps1` reports zero violations for that pattern."
+    },
+    {
+      "title": "CSS token system — rules and token reference",
+      "content": "# CSS token system — rules and token reference\n\n## Rule\n\nNo WZ app CSS file may contain a hardcoded colour value. Every colour must be a reference to a `var(--wz-*)` token defined in `wizzard-tokens.css`.\n\n```css\n/* correct */\nbackground: var(--wz-surface);\ncolor: var(--wz-text);\nborder: 1px solid var(--wz-border);\n\n/* wrong — never do this */\nbackground: rgba(255,255,255,.04);\ncolor: #e6edf3;\n```\n\n## Adding a new token\n\n1. Check that the colour is not already covered by an existing token.\n2. Propose the token name in `wizzard-tokens.css` — use the `--wz-{purpose}` convention.\n3. Add the token to the file.\n4. Use it in the app CSS.\n5. Update the reference table in this wiki page.\n\n## Core token reference\n\n| Token | Purpose |\n|---|---|\n| `--wz-bg` | Page background |\n| `--wz-surface` | Card and panel background |\n| `--wz-surface-alt` | Alternate/hover surface |\n| `--wz-border` | Border colour |\n| `--wz-text` | Primary text |\n| `--wz-text-muted` | Secondary/muted text |\n| `--wz-accent` | Primary accent / brand colour |\n| `--wz-accent-hover` | Accent hover state |\n| `--wz-nav-w` | Sidebar width (220px) |\n\n## Known gaps\n\n- `wai.css` (WizzardAI) has approximately 27 legacy hex values for chat bubbles and syntax highlighting. These are tracked in DEVENV issue **\"Migrate wai.css hex values to CSS tokens\"**."
+    },
+    {
+      "title": "Template and frontend pattern reference",
+      "content": "# Template and frontend pattern reference\n\n## Template structure\n\nEvery authenticated page:\n\n```html\n{% extends \"_base.html\" %}\n\n{% block title %}Page Title — AppName{% endblock %}\n\n{% block content %}\n<!-- page content here -->\n{% endblock %}\n\n{% block scripts %}\n<script src=\"/static/js/app-page.js\"></script>\n{% endblock %}\n```\n\nLogin and unauthenticated error pages are standalone (do not extend `_base.html`).\n\n## Sidebar\n\n```html\n<nav id=\"sidebar\">\n  <a href=\"/dashboard\" class=\"nav-link text-white\">Dashboard</a>\n  <a href=\"/settings\" class=\"nav-link text-white\">Settings</a>\n</nav>\n```\n\n`sidebar.js` sets the active class at runtime from `window.location.pathname`. No Jinja2 `{% if %}` blocks.\n\n## Layout\n\n```css\n#sidebar      { position: fixed; left: 0; top: 0; width: 220px; height: 100vh; z-index: 100; }\n.main-content { margin-left: 220px; padding: 24px; min-height: 100vh; }\n```\n\n## Toast\n\n```javascript\nfunction showToast(msg, ok) {\n    const el = document.createElement('div');\n    el.className = `toast align-items-center text-bg-${ok ? 'success' : 'danger'} border-0`;\n    el.setAttribute('role', 'alert');\n    el.innerHTML = `<div class=\"d-flex\"><div class=\"toast-body\">${msg}</div>\n        <button type=\"button\" class=\"btn-close btn-close-white me-2 m-auto\" data-bs-dismiss=\"toast\"></button></div>`;\n    document.getElementById('toastContainer').appendChild(el);\n    new bootstrap.Toast(el, { delay: 3500 }).show();\n    el.addEventListener('hidden.bs.toast', () => el.remove());\n}\n```\n\n## JavaScript module pattern\n\n```javascript\n(function() {\n  'use strict';\n\n  // page code here\n\n  // expose inline handlers only under the app namespace\n  window._wz_wc_saveContact = function() { ... };\n\n})();\n```\n\n## CDN versions (pinned)\n\n| Library | Version | Source |\n|---|---|---|\n| Bootstrap CSS + JS | 5.3.3 | cdn.jsdelivr.net — with SRI |\n| Bootstrap Icons | 1.11.3 | cdn.jsdelivr.net — with SRI |"
+    }
+  ],
+  "issues": [
+    {"title": "[EPIC] CSS token compliance — eliminate hardcoded colours from all apps",  "type": "epic",  "priority": "high",   "state": "In Progress", "story_points": 0,  "description": "Audit every WZ app CSS file for hardcoded hex/rgba values and replace them with var(--wz-*) tokens. Enforce via validate.ps1."},
+    {"title": "[EPIC] Template standardisation — all apps extend _base.html",            "type": "epic",  "priority": "high",   "state": "In Progress", "story_points": 0,  "description": "Ensure all authenticated templates in all WZ apps extend _base.html. Eliminate standalone page templates and inline style blocks."},
+    {"title": "[EPIC] JavaScript convention enforcement",                                 "type": "epic",  "priority": "medium", "state": "To Do",       "story_points": 0,  "description": "Enforce IIFE module pattern, window._wz_* namespace for handlers, relative API URLs, and correct token storage keys across all apps."},
+    {"title": "[EPIC] Python and API coding standards",                                   "type": "epic",  "priority": "medium", "state": "To Do",       "story_points": 0,  "description": "Enforce async FastAPI patterns, full type hints, pathlib, structured logging, and pydantic schemas across all WZ Python services."},
+    {"title": "[EPIC] WIZZARDSDK governance and validate.ps1 enforcement",               "type": "epic",  "priority": "high",   "state": "In Progress", "story_points": 0,  "description": "Keep WIZZARDSDK/standards/ up to date and run validate.ps1 to zero drift. Every new pattern must be proposed in the SDK before implementation."},
+    {"title": "[EPIC] Developer workstation and tooling standards",                       "type": "epic",  "priority": "low",    "state": "Backlog",     "story_points": 0,  "description": "Document Python 3.12 + Node 20 + .venv setup, VS Code extensions, and onboarding steps for a new WZ developer."},
+
+    {"title": "Audit all WZ apps for hardcoded CSS colour values",                        "type": "task",  "priority": "high",   "state": "To Do",       "story_points": 2, "description": "Run grep or validate.ps1 across all eight app CSS files. Produce a count and list of violations per app. Output becomes the backlog for token-migration stories."},
+    {"title": "Migrate wai.css hex values to CSS tokens (WizzardAI)",                     "type": "story", "priority": "high",   "state": "To Do",       "story_points": 5, "description": "wai.css has ~27 hardcoded hex values for chat bubbles, syntax highlighting, and dark surface variants. Map each to an existing or new --wz-* token. Add any missing tokens to wizzard-tokens.css first.",
+      "test_requirements": "validate.ps1 reports zero colour violations for wai.css after the change. All affected UI components render correctly in the browser with no visible colour regression.",
+      "uat_criteria": "A developer can open WizzardAI, use the chat interface, view code with syntax highlighting, and confirm all colours match the design intent. No hex values remain in wai.css.",
+      "decisions": "New tokens needed for chat-bubble surfaces and syntax highlighting must be proposed as named semantic tokens (e.g. --wz-code-bg, --wz-bubble-user) rather than generic colours.",
+      "investigations": "Identify which hex values map to existing tokens vs which require new ones. Check if any are one-off values that could be removed entirely."},
+    {"title": "Backfill WizzardChat templates to extend _base.html",                      "type": "story", "priority": "high",   "state": "To Do",       "story_points": 8, "description": "Existing WizzardChat templates are standalone (not extending _base.html). Each authenticated template must be refactored to extend _base.html. Remove all duplicated Bootstrap CDN links and shared script tags.",
+      "test_requirements": "After migration, each page renders identically to before. Bootstrap and shared scripts load once from _base.html. No duplicate script or link tags in the HTML output.",
+      "uat_criteria": "Navigating to every WizzardChat page confirms the sidebar, toast container, and shared styles load correctly without visual regression.",
+      "decisions": "Refactor one template at a time — do not batch-replace without testing each page individually.",
+      "investigations": "Identify all WizzardChat templates. Check which already extend _base.html (if any) and which are standalone."},
+    {"title": "Audit sidebar active-link pattern across all apps",                         "type": "task",  "priority": "medium", "state": "To Do",       "story_points": 2, "description": "Check all eight app sidebars for Jinja2 active conditionals. Produce a list of any template still using {% if %} logic on nav-links. Each finding becomes a fix task."},
+    {"title": "Add CDN version check to validate.ps1",                                    "type": "story", "priority": "medium", "state": "To Do",       "story_points": 3, "description": "Extend validate.ps1 to scan all _base.html files for Bootstrap and Bootstrap Icons CDN URLs. Flag any version that does not match the pinned standard (5.3.3 / 1.11.3). Include SRI hash validation.",
+      "test_requirements": "validate.ps1 correctly flags a _base.html using Bootstrap 5.3.0 as a violation. It passes cleanly for all apps using 5.3.3.",
+      "uat_criteria": "Running validate.ps1 from the WIZZARDSDK root produces a clear pass/fail per app for CDN version compliance.",
+      "decisions": "SRI hash check is a nice-to-have — flag missing or mismatched hashes as warnings, not errors.",
+      "investigations": "Check current validate.ps1 to understand existing check structure before extending it."},
+    {"title": "Document JS handler namespace convention in WIZZARDSDK",                   "type": "story", "priority": "medium", "state": "To Do",        "story_points": 2, "description": "Add a section to frontend.md documenting the window._wz_{app}_{action} convention, the IIFE module pattern, the relative-URL rule, and the token storage key registry for all apps.",
+      "test_requirements": "The documentation is clear enough for a developer to implement a new JS handler on the first attempt without asking for clarification.",
+      "uat_criteria": "A new WZ developer can read frontend.md and correctly scaffold a page JS stub with the right namespace and no globals.",
+      "decisions": "Include a quick-reference table of all app token keys and namespaces.",
+      "investigations": "Review which conventions are already in frontend.md vs which are only in copilot-instructions.md files."},
+    {"title": "Resolve WizzardAI onclick handler naming drift",                           "type": "story", "priority": "low",    "state": "Backlog",      "story_points": 3, "description": "WizzardAI template onclick handlers call wai-core.js functions by plain name (e.g. onclick=\"saveAgent()\"). These should be converted to window._wz_wai_saveAgent per the namespace standard.",
+      "test_requirements": "After conversion, all onclick handlers use the window._wz_wai_* prefix. No plain function names remain as inline event handlers.",
+      "uat_criteria": "All WizzardAI interactive elements (save, delete, run) continue to function correctly after the refactor.",
+      "decisions": "Convert incrementally per page — do not refactor all handlers in a single commit.",
+      "investigations": "Identify all inline onclick attributes in WizzardAI templates that call bare function names."},
+    {"title": "Write developer workstation setup guide in wiki",                          "type": "story", "priority": "low",    "state": "To Do",        "story_points": 3, "description": "Document the standard WZ developer workstation: Python 3.12, Node 20 LTS, Rancher Desktop (Windows), per-project .venv setup, VS Code extensions (GitHub Copilot Chat, Pylance, ESLint), and how to activate a project venv in PowerShell.",
+      "test_requirements": "A developer with a clean Windows machine can follow the guide and have all eight WZ apps running locally within one working session.",
+      "uat_criteria": "The guide has been tested by at least one person who was not involved in writing it.",
+      "decisions": "Scope to Windows/PowerShell only for now — no Linux or macOS variant needed yet.",
+      "investigations": "Check if any app currently has its own setup guide that should be consolidated here."},
+    {"title": "Add duplicate token-key detection to validate.ps1",                        "type": "story", "priority": "medium", "state": "Backlog",      "story_points": 2, "description": "Extend validate.ps1 to extract the localStorage token key from each app's copilot-instructions.md and verify that no two apps share the same key. Flag duplicates as errors.",
+      "test_requirements": "validate.ps1 flags a duplicate token key as an error. It passes cleanly against the current eight apps (all keys are unique).",
+      "uat_criteria": "Running validate.ps1 confirms the token key registry is clean with no duplicates.",
+      "decisions": "Extract keys using regex from the ## identity tokens section of copilot-instructions.md.",
+      "investigations": "Confirm current token keys are unique: wizzard_wd_token, wz_wai_token, wz_wa_token, wizzard_chat_token, wizzard_flow_token, wz_qa_token, wz_wfm_token, wizzard_tickets_token."},
+    {"title": "Enforce ruff linting across all WZ Python services",                       "type": "story", "priority": "medium", "state": "Backlog",      "story_points": 3, "description": "Add a ruff.toml or pyproject.toml configuration to each WZ Python service. Run ruff check as part of any CI pipeline and as a pre-commit hook. Target zero violations.",
+      "test_requirements": "ruff check exits with code 0 for each WZ Python service codebase.",
+      "uat_criteria": "Running ruff check . from any WZ service root produces zero violations.",
+      "decisions": "Use ruff as the single linter (replacing flake8/pylint if present). Line length: 120.",
+      "investigations": "Check which WZ services already have ruff configured and what the current violation count is per service."},
+    {"title": "Propose and document CSS tokens for code syntax highlighting",             "type": "story", "priority": "low",    "state": "Backlog",       "story_points": 2, "description": "WizzardAI displays code blocks with syntax highlighting. No --wz-* tokens exist for code surface colours. Define a set of semantic tokens (--wz-code-bg, --wz-code-text, --wz-code-keyword etc.) and add them to wizzard-tokens.css.",
+      "test_requirements": "New tokens are defined in wizzard-tokens.css and used in wai.css. Syntax highlighted code blocks render correctly.",
+      "uat_criteria": "Code blocks in WizzardAI chat display with consistent colours sourced from tokens. The colours read well against the page background.",
+      "decisions": "Use semantic naming (--wz-code-keyword) not colour naming (--wz-green-500).",
+      "investigations": "Review existing highlight.js theme used in wai.css. Identify the minimum set of tokens needed to cover all syntax highlight roles."}
+  ]
+}

@@ -1,0 +1,53 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: wztrack-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-wztrack}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-wztrack}
+      POSTGRES_DB: ${DB_NAME:-wztrack}
+    volumes:
+      - wztrack_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-wztrack}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: ./backend
+    container_name: wztrack-api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${DB_USER:-wztrack}:${DB_PASSWORD:-wztrack}@db:5432/${DB_NAME:-wztrack}
+      JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY}
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY}
+      CORS_ORIGINS: '["http://localhost", "http://localhost:8080"]'
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@wztrack.io}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-changeme}
+      ADMIN_DISPLAY_NAME: ${ADMIN_DISPLAY_NAME:-Administrator}
+      UPLOAD_DIR: /uploads
+    volumes:
+      - wztrack_uploads:/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: wztrack-fe
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
+
+volumes:
+  wztrack_pgdata:
+  wztrack_uploads:

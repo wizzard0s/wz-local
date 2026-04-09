@@ -1,0 +1,150 @@
+{
+  "project_key": "WZT",
+  "requirements": [
+    {
+      "title": "Enriched story structure with decisions, investigations, test requirements and UAT criteria",
+      "description": "Every non-trivial issue (story, spike, epic) must carry structured content beyond a title and description. The issue model must expose dedicated fields for open decisions that must be made, investigations required before work can start, explicit test requirements, and UAT acceptance criteria. These fields are populated at story creation or refinement and updated as the work progresses.",
+      "acceptance_criteria": "- Issue model exposes: `decisions` (what must be decided before or during work), `investigations` (what must be researched or prototyped), `test_requirements` (what must be tested and how), `uat_criteria` (what the user must confirm to accept the story).\n- All four fields are nullable Text, editable via PATCH /issues/{id}.\n- All four fields are returned in GET /issues/{id} and the issues list.\n- OpenAPI docs accurately describe each field with an example.",
+      "priority": "must",
+      "_status": "approved"
+    },
+    {
+      "title": "UAT sign-off as a required gate before a story can be marked Done",
+      "description": "User acceptance is a first-class action on every story. A dedicated sign-off endpoint records the approver identity, timestamp, and an optional note. A story cannot enter any Done workflow state without an explicit UAT sign-off recorded by an admin or manager.",
+      "acceptance_criteria": "- POST /issues/{id}/uat-signoff sets uat_approved=true, uat_approved_by, uat_approved_at.\n- Only admin or manager roles may call the endpoint.\n- Calling sign-off on an already-approved issue returns HTTP 409.\n- The sign-off action is written to the issue audit log with action=uat_signoff.\n- PATCH to a Done state without sign-off returns HTTP 422 with code DONE_GATE_BLOCKED.",
+      "priority": "must",
+      "_status": "approved"
+    },
+    {
+      "title": "Combined done gate enforcing both passing test run and UAT sign-off",
+      "description": "An issue may only transition to a workflow state with category 'done' when two explicit quality gates have been cleared: at least one linked passing test run, AND a UAT sign-off. Both must be present. Missing either blocks the transition.",
+      "acceptance_criteria": "- Transition to Done with no passing test run returns HTTP 422 listing that failure.\n- Transition to Done with no UAT sign-off returns HTTP 422 listing that failure.\n- Both failures are reported together in a single response where both are absent.\n- Admin/manager may bypass with override_reason; bypass is logged as done_gate_override in the audit log.\n- Error body: { code: DONE_GATE_BLOCKED, message: '...' }.",
+      "priority": "must",
+      "_status": "approved"
+    },
+    {
+      "title": "Issue audit history showing all development events as a timeline",
+      "description": "Every significant action on an issue must be retrievable as an ordered, immutable audit trail. This timeline is the primary evidence record showing how a story progressed from creation to Done, including all state changes, UAT sign-off, gate overrides, and analyst notes.",
+      "acceptance_criteria": "- GET /issues/{id}/history returns all AuditLog records for that issue ordered by created_at ascending.\n- Each entry includes: action, actor_id, old_value, new_value, note, created_at.\n- State transitions, UAT sign-offs, and done-gate overrides are always logged automatically.\n- Manual comment-style notes can be added via POST /issues/{id}/comments and are shown in context.\n- The history is immutable — no entry may be edited or deleted.",
+      "priority": "must",
+      "_status": "approved"
+    },
+    {
+      "title": "Screenshot and file evidence attachments on issues",
+      "description": "Developers and QA engineers must be able to attach evidence files (screenshots, log exports, test reports) to issues. Attachments serve as proof of work and test results that form part of the done evidence record.",
+      "acceptance_criteria": "- POST /issues/{id}/attachments accepts multipart/form-data.\n- Accepted types: image/png, image/jpeg, image/gif, image/webp, application/pdf, text/plain, text/csv.\n- Max 10 MB per file.\n- GET /issues/{id}/attachments returns list with filename, mime_type, size_bytes, uploaded_by, created_at.\n- Files served from authenticated download URL (requires valid JWT).\n- Attachment count shown on issue card and detail view.",
+      "priority": "must",
+      "_status": "draft"
+    }
+  ],
+  "issues": [
+    {
+      "title": "[EPIC] Story quality standard and done gate",
+      "type": "epic",
+      "priority": "urgent",
+      "state": "In Progress",
+      "story_points": 0,
+      "description": "Enforce a meaningful definition of Done: every story must carry structured content (decisions, investigations, test requirements, UAT criteria), pass a test run, and receive explicit UAT sign-off before it can be closed.",
+      "decisions": "- Decided: UAT sign-off is restricted to admin and manager roles only.\n- Decided: Done gate checks both test run AND UAT — both must pass, no partial credit.\n- Open: Should spike/investigation issues be exempt from UAT sign-off requirement?",
+      "investigations": "- Reviewed existing QA gate implementation in issues.py — extended rather than replaced.\n- Confirmed AuditLog model already exists and is used for state transitions.",
+      "test_requirements": "- Unit test: PATCH to Done state without passing test run returns 422.\n- Unit test: PATCH to Done state without UAT sign-off returns 422.\n- Unit test: Both failures reported together when both are absent.\n- Unit test: Admin override with override_reason succeeds and logs done_gate_override.",
+      "uat_criteria": "- Product owner can see all four enriched fields on any story.\n- PM can sign off UAT from the issue detail view.\n- A story with no test run and no sign-off cannot be dragged to a Done column on the board.\n- The audit history shows every state change and the UAT sign-off event in chronological order."
+    },
+    {
+      "title": "Add decisions, investigations, test_requirements, uat_criteria fields to Issue",
+      "type": "story",
+      "priority": "urgent",
+      "state": "Done",
+      "story_points": 3,
+      "description": "Extend the Issue database model and API schemas to carry four new structured text fields: decisions, investigations, test_requirements, and uat_criteria. These fields are nullable, freely editable, and returned on every issue response.",
+      "decisions": "- Decided: All four fields are plain Text (not JSON) to keep authoring simple.\n- Decided: All four are nullable so existing issues and tasks are not broken.",
+      "investigations": "- Checked SQLAlchemy mapped_column for Text — straightforward addition to Issue model.\n- Confirmed pydantic IssueCreate and IssueUpdate both need the fields; IssueOut needs them for reads.\n- Verified create_all on startup will add new columns to the existing table.",
+      "test_requirements": "- POST /issues/project/{id} with all four fields populated returns them in the response.\n- PATCH /issues/{id} updating only `decisions` leaves the other three unchanged.\n- GET /issues/{id} on an existing issue created before this change returns null for all four fields.",
+      "uat_criteria": "- Open a new story in the UI: all four fields are present and editable.\n- Save the story: values persist and are shown on reload.\n- Existing stories created before this change open without error (fields show empty)."
+    },
+    {
+      "title": "Add UAT sign-off endpoint and uat_approved fields to Issue",
+      "type": "story",
+      "priority": "urgent",
+      "state": "Done",
+      "story_points": 3,
+      "description": "Add uat_approved (bool), uat_approved_by (UUID FK), and uat_approved_at (datetime) to the Issue model. Expose POST /issues/{id}/uat-signoff restricted to admin and manager. Record the action in the audit log.",
+      "decisions": "- Decided: Sign-off is one-way — once approved it cannot be revoked via API (requires admin DB action).\n- Decided: Calling sign-off twice returns HTTP 409 Conflict rather than silently succeeding.",
+      "investigations": "- Reviewed existing AuditLog usage in update_issue — pattern is established, reused it.\n- Confirmed DateTime(timezone=True) needed on uat_approved_at to store timezone-aware datetimes.",
+      "test_requirements": "- POST /issues/{id}/uat-signoff as admin returns updated issue with uat_approved=true.\n- POST /issues/{id}/uat-signoff as developer role returns 403.\n- POST /issues/{id}/uat-signoff twice returns 409.\n- GET /issues/{id}/history after sign-off shows an entry with action=uat_signoff.",
+      "uat_criteria": "- Manager clicks 'Sign off UAT' on a story: uat_approved flips to true, approver name and timestamp are visible.\n- Developer role cannot see or use the sign-off button.\n- Signing off twice shows an error message rather than silently duplicating."
+    },
+    {
+      "title": "Extend done gate to also require UAT sign-off",
+      "type": "story",
+      "priority": "urgent",
+      "state": "Done",
+      "story_points": 2,
+      "description": "Replace the existing QA-only gate with a combined done gate that blocks transition to any Done workflow state unless both a passing test run exists and uat_approved is true. Both failures must be reported together in a single error response.",
+      "decisions": "- Decided: Rename internal function from _check_qa_gate to _check_done_gate to reflect the broader scope.\n- Decided: Error code changes from QA_GATE_BLOCKED to DONE_GATE_BLOCKED.\n- Decided: Override path for admin/manager remains: override_reason field in PATCH body.",
+      "investigations": "- Reviewed all callers of _check_qa_gate — only one call site in update_issue, safe to rename.\n- Confirmed WorkflowState.category == 'done' is the correct predicate (already used).",
+      "test_requirements": "- PATCH to Done with no test run, no UAT: 422, message mentions both.\n- PATCH to Done with test run, no UAT: 422, message mentions only UAT.\n- PATCH to Done with no test run, UAT approved: 422, message mentions only test run.\n- PATCH to Done with both satisfied: 200.\n- Admin override with override_reason: 200, audit log contains done_gate_override.",
+      "uat_criteria": "- Try to close a story that has a passing test run but no UAT sign-off: blocked with clear message.\n- Try to close a story that has UAT sign-off but no passing test run: blocked with clear message.\n- After providing both, closing succeeds.\n- Admin can override with a written reason; the override appears in the history."
+    },
+    {
+      "title": "Expose issue audit history via GET /issues/{id}/history",
+      "type": "story",
+      "priority": "high",
+      "state": "Done",
+      "story_points": 2,
+      "description": "Add a read-only endpoint that returns the full ordered audit trail for an issue. This is the development evidence timeline that shows every state change, UAT sign-off, override, and any other recorded action on the issue.",
+      "decisions": "- Decided: Not paginated for now — audit logs per issue are not expected to exceed a few hundred rows.\n- Decided: Returns empty array (not 404) when an issue exists but has no audit entries.",
+      "investigations": "- AuditLog model filters by entity_type='issue' and entity_id={issue_id}.\n- Ordering by created_at ascending gives chronological timeline.",
+      "test_requirements": "- GET /issues/{id}/history on issue with no history returns [].\n- After a state transition, GET /issues/{id}/history returns one entry with action=state_transition.\n- After UAT sign-off, GET /issues/{id}/history includes action=uat_signoff entry.\n- GET /issues/{nonexistent-id}/history returns 404.",
+      "uat_criteria": "- Open any story that has been through a workflow: a history tab shows each event with who did it and when.\n- UAT sign-off event is clearly labelled and shows the approver name.\n- History cannot be edited or deleted — it is read-only."
+    },
+    {
+      "title": "Implement file attachment upload and download on issues",
+      "type": "story",
+      "priority": "high",
+      "state": "To Do",
+      "story_points": 5,
+      "description": "Allow developers and QA engineers to attach evidence files (screenshots, log exports, test reports) to issues via multipart upload. Files are stored in the uploads Docker volume and served via authenticated download URLs.",
+      "decisions": "- Open: Should attachments be scoped only to issues, or also to test runs?\n- Open: Should we use a CDN or just serve direct from the container for v1?\n- Decided: Max 10 MB per file, accepted MIME types: image/*, application/pdf, text/plain, text/csv.",
+      "investigations": "- Docker volume wztrack_uploads already defined in docker-compose.yml — use /uploads as storage root.\n- FastAPI UploadFile with aiofiles for async write.\n- Storage path pattern: /uploads/{project_id}/{issue_id}/{uuid}_{original_filename}.\n- Attachment model already exists in issue.py — needs issue_id FK enforcement and download route.",
+      "test_requirements": "- POST /issues/{id}/attachments with valid PNG returns 201 with attachment record.\n- POST /issues/{id}/attachments with file > 10 MB returns 413.\n- POST /issues/{id}/attachments with disallowed MIME type returns 422.\n- GET /issues/{id}/attachments returns list of all attachments.\n- GET /attachments/{id}/download without valid JWT returns 401.\n- GET /attachments/{id}/download with valid JWT streams the file.",
+      "uat_criteria": "- Developer drags a screenshot onto the issue detail view: it uploads and shows as a thumbnail.\n- QA attaches a PDF test report: it appears in the attachments list with filename and size.\n- Clicking an attachment downloads it without requiring a second login.\n- Attempting to upload a .exe file is rejected with a clear error message."
+    },
+    {
+      "title": "Frontend: enrich issue detail view with decisions, investigations, test requirements, UAT",
+      "type": "story",
+      "priority": "high",
+      "state": "To Do",
+      "story_points": 5,
+      "description": "Update the issue detail page to display and edit all four enriched story fields. Add a UAT sign-off button for admin/manager roles. Show uat_approved status badge and the approver/timestamp when signed off.",
+      "decisions": "- Open: Should all four fields use a rich Markdown editor or plain textarea for v1?\n- Decided: UAT sign-off button is only rendered when the current user's role is admin or manager.",
+      "investigations": "- Check whether the existing issue detail component in React already handles extra fields or if it's strictly typed.\n- Determine whether Ant Design has a suitable Timeline component for the history tab.",
+      "test_requirements": "- Issue detail page renders all four fields when populated.\n- Editing a field and saving calls PATCH /issues/{id} with only the changed field.\n- UAT sign-off button calls POST /issues/{id}/uat-signoff and refreshes the issue state.\n- UAT sign-off button is absent when current user is a developer or viewer.",
+      "uat_criteria": "- Open a story: all four structured fields are visible, labelled, and editable.\n- Fill in the UAT criteria field and save: value persists on page reload.\n- As manager: sign off UAT — button disappears, replaced by 'UAT approved by {name} on {date}'.\n- As developer: sign-off button is not visible."
+    },
+    {
+      "title": "Frontend: issue history timeline tab",
+      "type": "story",
+      "priority": "high",
+      "state": "To Do",
+      "story_points": 3,
+      "description": "Add a History tab to the issue detail view. It calls GET /issues/{id}/history and renders an ordered timeline of all audit events. Each entry shows the action label, actor, timestamp, and a human-readable description of what changed.",
+      "decisions": "- Decided: History tab is read-only — no user actions from this view.\n- Open: Should we show actor display_name or just actor_id? Requires a users lookup or embedding display_name in the audit log.",
+      "investigations": "- History endpoint returns actor_id (UUID). Need to either enrich the response server-side with display_name, or do a client-side lookup from the users list.\n- Ant Design Timeline component maps naturally to the audit log structure.",
+      "test_requirements": "- History tab loads without error for an issue with no history (shows empty state).\n- After a state transition, history tab shows the event within one page reload.\n- UAT sign-off event is distinguishable from state transition events in the UI.\n- Events are shown in ascending chronological order.",
+      "uat_criteria": "- Open a story that has been through several states: History tab shows each transition with who made it and when.\n- UAT sign-off event is clearly labelled and shows approver identity.\n- History tab shows a friendly empty state message for brand-new issues."
+    },
+    {
+      "title": "Frontend: attachment panel with drag-drop upload and thumbnail preview",
+      "type": "story",
+      "priority": "medium",
+      "state": "Backlog",
+      "story_points": 5,
+      "description": "Add an Attachments panel to the issue detail view. Supports drag-and-drop or click-to-browse upload. Images show as thumbnails; other files show as filename+size+download button. Upload progress indicator required.",
+      "decisions": "- Open: Thumbnail generation — client-side using URL.createObjectURL, or server-side thumbnails?\n- Decided: Drag-drop target is the whole attachment panel, not a dedicated dropzone sub-element.",
+      "investigations": "- Ant Design Upload component supports drag-drop and beforeUpload for client-side MIME/size validation.\n- Need to pass the JWT as a custom header on the upload request (Ant Design Upload customRequest).",
+      "test_requirements": "- Dragging a PNG onto the panel triggers upload and shows a thumbnail on success.\n- Uploading a file > 10 MB shows a size-error message before the API is called.\n- Non-allowed MIME type shows a type-error message before the API is called.\n- Download button on a non-image attachment triggers file download in the browser.",
+      "uat_criteria": "- Developer drags a screenshot onto the panel: progress bar shows, then thumbnail appears.\n- QA attaches a PDF: shows as a file card with icon, filename, and download button.\n- Upload a 15 MB file: rejected immediately with a message before any network request is made.\n- All attachments survive a page reload."
+    }
+  ]
+}

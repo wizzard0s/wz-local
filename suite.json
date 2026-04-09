@@ -1,0 +1,13 @@
+{
+  "name": "wz_local",
+  "description": "Local development and personal tooling projects for the WZ workspace. These are real running instances — not generic or reusable by default. wz_local is the sandbox where new WZ projects are built and proven before they are promoted to wz_systems.",
+  "subprojects": [
+    {
+      "name": "wztrack",
+      "path": "wztrack",
+      "description": "WZTrack project management tool — the first WZ local instance. Tracks requirements, issues, wiki, test runs, and UAT for all WZ projects.",
+      "status": "active"
+    }
+  ],
+  "status": "active"
+}
